@@ -30,10 +30,13 @@ robot-suiveur-ligne/
 ## 📖 Algorithmes
 
 ### Version Initiale (`algo.md`)
+
 Un algorithme simple basé sur la détection de ligne avec deux capteurs. Le robot ajuste sa direction en fonction de l'état des capteurs (gauche, droit, ou les deux).
 
 ### Version Actuelle (`algo2.md`)
+
 Une implémentation plus avancée avec :
+
 - **Odométrie** : Calcul de la position (x, y, θ) à partir des encodeurs.
 - **Commande en boucle fermée** : Navigation vers une cible (xp, yp, thetap).
 - **Correcteur PI** : Régulation des moteurs pour un suivi précis.
@@ -54,17 +57,32 @@ Une implémentation plus avancée avec :
 
 ```mermaid
 flowchart TD
-    Start([Début]) --> Init[Initialisation]
-    Init --> WaitStart[Attente bouton démarrage]
-    WaitStart -->|Bouton pressé| ReadSensors[Lecture capteurs et encodeurs]
-    ReadSensors --> Odometry[Calcul odométrie]
-    Odometry --> ClosedLoop[Calcul commande boucle fermée]
-    ClosedLoop --> PIDRegulation[Régulation PI]
-    PIDRegulation --> SendCommands[Envoi commandes moteurs]
-    SendCommands --> CheckObstacle[Vérification obstacle]
-    CheckObstacle -->|Pas d'obstacle| ReadSensors
-    CheckObstacle -->|Obstacle détecté| Stop[Arrêt]
+    %% Début/Fin (ovales)
+    Start([Début]) --> Init[[Initialisation]]
+
+    %% Attente bouton démarrage (décision)
+    Init --> WaitStart{Bouton démarrage pressé ?}
+    WaitStart -->|Oui| ReadSensors[Lire capteurs et encodeurs]
+
+    %% Processus (rectangles et sous-programmes)
+    ReadSensors --> Odometry[[Calcul odométrie]]
+    Odometry --> ClosedLoop[[Calcul commande boucle fermée]]
+    ClosedLoop --> PIDRegulation[[Régulation PI]]
+    PIDRegulation --> SendCommands[Envoyer commandes moteurs]
+
+    %% Décision obstacle (losange)
+    SendCommands --> CheckObstacle{Obstacle détecté ?}
+    CheckObstacle -->|Non| ReadSensors
+    CheckObstacle -->|Oui| Stop([Arrêt])
+
+    %% Fin (ovale)
     Stop --> End([Fin])
+
+    %% Styles ISO 5807
+    style Init stroke-width:2px,fill:#f9f
+    style Odometry stroke-width:2px,fill:#f9f
+    style ClosedLoop stroke-width:2px,fill:#f9f
+    style PIDRegulation stroke-width:2px,fill:#f9f
 ```
 
 ## 🚀 Comment Utiliser
