@@ -4,12 +4,11 @@
 // propriete du robot (en m)
 #define ROBOT_L 0.2   // entraxe des roues
 #define ROBOT_r 0.07  // diametre d'une roue
-#define PPR 11        // ticks de l'encodeur (je sort cette valeur parce que j'ai pas mieux et c generalement celle la)
 
 // Encodeur en QUADRATURE : on exploite les 4 transitions (A+ A- B+ B-)
 // Ratio réducteur = 53, résolution brute du disque = 3 fentes
 // donc  53 * 3 * 4 = 636 ticks par tour de roue
-const float TICKS_PAR_TOUR = 636.0f;
+#define TICKS_PAR_TOUR 636.0
 
 // ==========================================================================
 // PARAMETRES DU CORRECTEUR PI
@@ -24,46 +23,21 @@ const float dt = 0.01f;    // Période d'échantillonnage (10 ms)
 // Configuration des broches
 const int LEFT_SENSOR_PIN = 50;
 const int RIGHT_SENSOR_PIN = 52;
-const int LEFT_MOTOR_PIN = 10;
-const int RIGHT_MOTOR_PIN = 11;
-const int LEFT_ENCODER_PIN = 30; // a verifier donc prions
-#define ENC1_A  18   // INT5
-#define ENC1_B  19   // INT4
-#define ENC2_A  20   // INT3
-#define ENC2_B  21   // INT2
-const int RIGHT_ENCODER_PIN = 31;
+const int LEFT_MOTOR_PIN = 10; // PWM_MOT1
+const int RIGHT_MOTOR_PIN = 11; // PWM_MOT2
+const int DIR_MOT1 = 30; // sens de direction des roues
+const int DIR_MOT2 = 31;
+const int ENC1_A = 18;   // INT5
+const int ENC1_B = 19;  // INT4
+const int ENC2_A = 20; // INT3
+const int ENC2_B = 21;   // INT2
 const int START_BUTTON_PIN = 2;  // À confirmer
 const int OBSTACLE_SENSOR_PIN = A0;  // Capteur IR obstacle
-
-// Driver moteur PmodHB5 
-#define PWM_MOT1  10
-#define DIR_MOT1  30
-#define PWM_MOT2  11
-#define DIR_MOT2  31
 
 
 // Variables d'état
 bool started = false;
 bool obstacleDetected = false;
-
-struct q {
-  float v;
-  float omega;
-}; // Format que renvoie la lecture des encodeurs
-
-// Variables associées aux encodeurs et aux interruptions
-#define TIMEOUT 100000 // si valeur superieur, roues a l'arret (0.1s)
-volatile unsigned long dt_L = 0;
-volatile unsigned long lastTimeL = 0;
-volatile int sens_l = 1;
-
-volatile unsigned long dt_R = 0;
-volatile unsigned long lastTimeR = 0;
-volatile int sens_R = 1;
-
-// Compteurs de ticks qui est volatile car modifiés dans les ISRs
-volatile long ticks_mot1 = 0;
-volatile long ticks_mot2 = 0;
 
 // Termes correcteurs PI
 float integral_mot1 = 0.0f;
@@ -71,6 +45,10 @@ float integral_mot2 = 0.0f;
 
 // Horodatage boucle temps réel
 unsigned long previousMillis = 0;
+
+// Compteurs de ticks qui est volatile car modifiés dans les ISRs
+volatile long ticks_mot1 = 0;
+volatile long ticks_mot2 = 0;
 
 // =========================================================================
 // ROUTINES D'INTERRUPTION (ISRs) — Décodage en quadrature complète
@@ -115,10 +93,6 @@ void setup() {
   // Arrêt initial des moteurs
   digitalWrite(LEFT_MOTOR_PIN, LOW);
   digitalWrite(RIGHT_MOTOR_PIN, LOW);
-
-  // setup des interruptions pour l'encodeur
-  attachInterrupt(digitalPinToInterrupt(LEFT_ENCODER_PIN), handleLeftEncoder, RISING);
-  attachInterrupt(digitalPinToInterrupt(RIGHT_ENCODER_PIN), handleRightEncoder, RISING);
 
   // Interruptions sur les 4 canaux (CHANGE = front montant ET descendant)
   attachInterrupt(digitalPinToInterrupt(ENC1_A), ISR_ENC1_A, CHANGE);
@@ -216,8 +190,8 @@ void loop() {
   int pwm_mot2 = computePID(consigne_RPS_mot2, vit_mesuree_mot2, integral_mot2);
 
   // Envoi des commandes aux drivers
-  setMotorPower(PWM_MOT1, DIR_MOT1, pwm_mot1);
-  setMotorPower(PWM_MOT2, DIR_MOT2, pwm_mot2);
+  setMotorPower(LEFT_MOTOR_PIN, DIR_MOT1, pwm_mot1);
+  setMotorPower(RIGHT_MOTOR_PIN, DIR_MOT2, pwm_mot2);
 
   delay(50);  // Petit délai pour stabilité
 }
@@ -291,60 +265,6 @@ int computePID(float consigne_RPS, float vitesse_mesuree_RPS, float &integral) {
   }
 
   return commande_pwm;
-}
-
-
-// Envoie de consignes de vitesses au robot
-void moveRobot(float Wl, float Wr) {
-  // A CHANGER
-  digitalWrite(LEFT_MOTOR_PIN, LOW);
-  digitalWrite(RIGHT_MOTOR_PIN, LOW);
-}
-
-
-// Convertir des donnees de la forme v, omega en vitesses de moteur droit/gauche
-void commandToSpeed(float v, float omega) {
-  float w_L = (2 * v - ROBOT_L * omega) / (2 * ROBOT_r);
-  float w_R = (2 * v + ROBOT_L * omega) / (2 * ROBOT_r);
-  moveRobot(w_L, w_R);
-}
-
-// Conversion inverse -> vitesse des roues into v, omega (a noter qu'on a pas le sens du robot genre avant/arriere, a deduire de la commande)
-q GetQFromWheel() {
-  // Calcul de la vitesse des deux roues
-  float vL, vR;
-  if (dt_L > TIMEOUT) {
-    vL = 0.0;
-  } else {
-    vL = (2.0 * PI * ROBOT_r * 1000000.0) / (PPR * (float)dt_L);
-  }
-
-  if (dt_R > TIMEOUT) {
-    vR = 0.0;
-  } else {
-    vR = (2.0 * PI * ROBOT_r * 1000000.0) / (PPR * (float)dt_R);
-  }
-
-  // Calcul de la vitesse lineaire et angulair globale du robot
-  float Vrobot = (vL + vR) / 2;
-  float Omegarobot = (vR - vL) / ROBOT_L;
-
-  return q{Vrobot, Omegarobot};
-}
-
-
-
-// fonctions qui actualisent a chaque interruptions le delai entre chaques ticks d'encodeurs (pour déduire la vitesse des roues)
-void handleLeftEncoder() {
-  unsigned long current_time = micros();
-  dt_L = current_time - lastTimeL; // Temps écoulé depuis le dernier tick
-  lastTimeL = current_time;
-}
-
-void handleRightEncoder() {
-  unsigned long current_time = micros();
-  dt_R = current_time - lastTimeR; // Temps écoulé depuis le dernier tick
-  lastTimeR = current_time;
 }
 
 /**
